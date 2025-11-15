@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Document</title>
+  
+  <!-- Include Firebase SDKs via CDN -->
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-storage.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-database.js"></script>
+  
+</head>
+<body>
+
+  <h2>Upload Document</h2>
+  
+  <!-- Document Upload Form -->
+  <form id="uploadForm">
+    <input type="file" id="fileInput" accept="application/pdf, .doc, .docx, .txt" required><br><br>
+    <button type="submit">Upload Document</button>
+  </form>
+
+  <p id="status"></p>
+
+  <script>
+    // Your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBr1VpHdmMZMkXQEIGp55N5JGVgYbhpyqY",
+      authDomain: "medicinereminder-d0711.firebaseapp.com",
+      projectId: "medicinereminder-d0711",
+      storageBucket: "medicinereminder-d0711.appspot.com",
+      messagingSenderId: "516386930818",
+      appId: "1:516386930818:web:3d4d409673a9b4ec0bf49b"
+    };
+
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const storage = firebase.storage();
+    const database = firebase.database();
+
+    // Form submission handler
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      
+      if (file) {
+        // Create a storage reference
+        const storageRef = storage.ref('documents/' + file.name);
+        
+        // Upload file to Firebase Storage
+        const uploadTask = storageRef.put(file);
+        
+        // Monitor upload progress
+        uploadTask.on('state_changed', function(snapshot) {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          document.getElementById('status').innerText = 'Upload is ' + progress.toFixed(2) + '% done';
+        }, function(error) {
+          document.getElementById('status').innerText = 'Upload failed: ' + error.message;
+        }, function() {
+          // Get the download URL after upload is complete
+          uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
+            document.getElementById('status').innerText = 'Upload successful!';
+
+            // Save the document URL to Firebase Realtime Database
+            const documentRef = database.ref('documents');
+            const newDocRef = documentRef.push();
+            newDocRef.set({
+              url: downloadURL,
+              fileName: file.name,
+              fileType: file.type,
+            });
+
+            alert('Document uploaded and URL saved to Firebase!');
+          });
+        });
+      } else {
+        alert('Please select a file to upload');
+      }
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <script type="module">
+    // Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getDatabase, ref, onValue, set, update, get } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBr1VpHdmMZMkXQEIGp55N5JGVgYbhpyqY",
+      authDomain: "medicinereminder-d0711.firebaseapp.com",
+      projectId: "medicinereminder-d0711",
+      storageBucket: "medicinereminder-d0711.appspot.com",
+      messagingSenderId: "516386930818",
+      appId: "1:516386930818:web:3d4d409673a9b4ec0bf49b"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const storage = getStorage(app);
+
+    $(document).ready(function () {
+      loadPatientData();
+
+      // Handle click for adding new medicine in the view patient modal
+      $('#newMedicineButton').click(function () {
+        addNewMedicineRow();
+      });
+
+      // Function to add new medicine input row in the view patient modal
+      function addNewMedicineRow() {
+        const newMedicineRow = `
+          <tr class="new-medicine-row">
+            <td><input type="text" class="form-control new-medicine-name" required></td>
+            <td><input type="time" class="form-control new-medicine-time" required></td>
+            <td><input type="number" class="form-control new-medicine-intake" required></td>
+            <td><input type="number" class="form-control new-medicine-count" required></td>
+            <td>
+              <label class="checkbox-inline">
+                <input type="checkbox" class="new-intake-type" value="Before Food"> Before Food
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" class="new-intake-type" value="After Food"> After Food
+              </label>
+            </td>
+            <td>
+              <button class="btn btn-success btn-save-new-medicine">Save</button>
+            </td>
+          </tr>
+        `;
+        $('#viewMedicineTable tbody').append(newMedicineRow);
+      }
+
+      // Handle save button click for the new medicine
+      $(document).on('click', '.btn-save-new-medicine', function () {
+        const newRow = $(this).closest('tr');
+        const medicineName = newRow.find('.new-medicine-name').val();
+        const time = newRow.find('.new-medicine-time').val();
+        const intake = newRow.find('.new-medicine-intake').val();
+        const count = newRow.find('.new-medicine-count').val();
+
+        const intakeTypes = [];
+        newRow.find('.new-intake-type:checked').each(function () {
+          intakeTypes.push($(this).val());
+        });
+
+        if (medicineName && time && intake && count && intakeTypes.length > 0) {
+          const patientKey = $('#viewPatientName').text();
+
+          const patientRef = ref(db, 'Patientname:' + patientKey);
+          get(patientRef).then((snapshot) => {
+            const data = snapshot.val();
+            const medicines = data.Medicines || [];
+
+            medicines.push({
+              MedicineName: medicineName,
+              Time: time,
+              Intake: intake,
+              Count: count,
+              IntakeType: intakeTypes
+            });
+
+            update(patientRef, { Medicines: medicines })
+              .then(() => {
+                alert('New medicine added successfully!');
+                newRow.remove();  // Remove the input row after saving
+                viewPatientData('Patientname:' + patientKey);  // Refresh the view
+              })
+              .catch((error) => {
+                console.error('Error saving new medicine:', error);
+                alert('Error saving new medicine.');
+              });
+          });
+        } else {
+          alert('Please fill in all the details.');
+        }
+      });
+
+      // Handle form submission for adding patient
+      $('#patientform').submit(function (e) {
+        e.preventDefault();
+        const patientName = $('#patientname').val();
+        const medicines = [];
+
+        $('#medicineInputs .medicine-row').each(function () {
+          const medicineName = $(this).find('.medicinename').val();
+          const time = $(this).find('.time').val();
+          const intake = $(this).find('.intake').val();
+          const count = $(this).find('.count').val();
+
+          const intakeTypes = [];
+          $(this).find('.intake-type:checked').each(function () {
+            intakeTypes.push($(this).val());
+          });
+
+          if (medicineName && time && intake && count && intakeTypes.length > 0) {
+            medicines.push({
+              MedicineName: medicineName,
+              Time: time,
+              Intake: intake,
+              Count: count,
+              IntakeType: intakeTypes
+            });
+          }
+        });
+
+        if (patientName && medicines.length > 0) {
+          const patientRef = ref(db, 'Patientname:' + patientName);
+          set(patientRef, { Medicines: medicines })
+            .then(() => {
+              alert('Patient data saved successfully!');
+              $('#patientform')[0].reset();
+              $('#medicineInputs').empty();  // Clear the dynamic inputs
+              $('#patientModal').modal('hide');
+              loadPatientData();  // Refresh the data
+            })
+            .catch((error) => {
+              console.error('Error saving patient data:', error);
+              alert('Error saving patient data.');
+            });
+        } else {
+          alert('Please fill in all the details.');
+        }
+      });
+
+      function loadPatientData() {
+        const patientTableBody = $('#patient tbody');
+        const patientsRef = ref(db);
+
+        onValue(patientsRef, (snapshot) => {
+          const data = snapshot.val();
+          patientTableBody.empty();
+
+          if (data) {
+            for (const key in data) {
+              if (key.startsWith('Patientname:')) {
+                const patient = data[key];
+                const row = $('<tr>');
+                row.append($('<td>').text(key.replace('Patientname:', '')));
+
+                const viewButton = $('<button>').text('View').addClass('btn btn-primary').on('click', function () {
+                  viewPatientData(key);
+                });
+
+                // Add upload button next to the view button
+                const uploadButton = $('<button>').text('Upload Document').addClass('btn btn-info').on('click', function () {
+                  $('#uploadDocumentModal').data('patientKey', key).modal('show');
+                });
+
+                const actionCell = $('<td>').append(viewButton).append(uploadButton);
+                row.append(actionCell);
+                patientTableBody.append(row);
+              }
+            }
+          } else {
+            patientTableBody.append($('<tr>').append($('<td>').attr('colspan', '2').text('No data available')));
+          }
+        }, (error) => {
+          console.error('Error fetching data:', error);
+        });
+      }
+
+      // Upload file to Firebase Storage and save metadata to Firebase Realtime Database
+      document.getElementById('uploadDocumentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const fileInput = document.getElementById('document');
+        const patientKey = $('#uploadDocumentModal').data('patientKey'); // Get patientKey from modal data
+
+        if (fileInput.files.length > 0) {
+          const file = fileInput.files[0];
+          const fileName = file.name;
+
+          // Create a storage reference
+          const storageReference = storageRef(storage, 'documents/' + fileName);
+
+          // Upload file
+          uploadBytes(storageReference, file).then((snapshot) => {
+            console.log('File uploaded successfully!');
+
+            // Get download URL
+            getDownloadURL(snapshot.ref).then((downloadURL) => {
+              console.log('File available at:', downloadURL);
+
+              // Store file metadata in Firebase Realtime Database
+              const dbRef = ref(db, 'patients/' + patientKey + '/documents/' + fileName);
+              set(dbRef, {
+                fileName: fileName,
+                downloadURL: downloadURL
+              }).then(() => {
+                alert('Document uploaded successfully and metadata saved!');
+                $('#uploadDocumentModal').modal('hide'); // Close the modal
+              }).catch((error) => {
+                console.error('Error saving metadata:', error);
+              });
+            });
+          }).catch((error) => {
+            console.error('Upload failed:', error);
+          });
+        } else {
+          alert('Please select a document to upload.');
+        }
+      });
+
+      function viewPatientData(key) {
+        const patientRef = ref(db, key);
+        onValue(patientRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data && data.Medicines) {
+            $('#viewPatientName').text(key.replace('Patientname:', ''));
+            const tbody = $('#viewMedicineTable tbody');
+            tbody.empty();
+
+            data.Medicines.forEach((medicine, index) => {
+              const intakeTypesText = medicine.IntakeType ? medicine.IntakeType.join(', ') : '';
+              const row = `
+                  <tr>
+                    <td>${medicine.MedicineName}</td>
+                    <td>${medicine.Time}</td>
+                    <td>${medicine.Intake}</td>
+                    <td>${medicine.Count}</td>
+                    <td>${intakeTypesText}</td>
+                    <td>
+                      <button class="btn btn-warning btn-edit-medicine" data-index="${index}" data-patient="${key}">Edit</button>
+                      <button class="btn btn-danger btn-delete-medicine" data-index="${index}" data-patient="${key}">Delete</button>
+                    </td>
+                  </tr>
+                `;
+              tbody.append(row);
+            });
+
+            $('#viewPatientModal').modal('show');
+          } else {
+            alert('No data found for this patient.');
+          }
+        });
+      }
+
+      $(document).on('click', '.btn-edit-medicine', function () {
+        const patientKey = $(this).data('patient');
+        const index = $(this).data('index');
+        populateEditModal(patientKey, index);
+      });
+
+      function populateEditModal(patientKey, index) {
+        const patientRef = ref(db, patientKey);
+        get(patientRef).then((snapshot) => {
+          const data = snapshot.val();
+          if (data && data.Medicines && data.Medicines.length > index) {
+            $('#editMedicineInputs').empty();
+            const medicine = data.Medicines[index];
+            const intakeTypes = medicine.IntakeType || [];
+
+            $('#editMedicineInputs').append(`
+                <div class="medicine-row extra-inputs">
+                  <div class="form-group">
+                    <label for="editMedicineName">Medicine Name</label>
+                    <input type="text" id="editMedicineName" class="form-control" value="${medicine.MedicineName}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editTime">Time</label>
+                    <input type="time" id="editTime" class="form-control" value="${medicine.Time}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editIntake">Intake</label>
+                    <input type="number" id="editIntake" class="form-control" value="${medicine.Intake}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editCount">Count</label>
+                    <input type="number" id="editCount" class="form-control" value="${medicine.Count}" required />
+                  </div>
+                  <div class="form-group">
+                    <label>Intake Type</label><br/>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" class="intake-type" value="Before Food" ${intakeTypes.includes('Before Food') ? 'checked' : ''}> Before Food
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" class="intake-type" value="After Food" ${intakeTypes.includes('After Food') ? 'checked' : ''}> After Food
+                    </label>
+                  </div>
+                </div>
+            `);
+            
+            // Add event listener for changes in Intake field
+            $('#editIntake').on('input', function() {
+              const newIntake = $(this).val();
+              const initialCount = medicine.Count; // Store the initial count
+              const newCount = initialCount - newIntake; // Decrease count based on intake
+
+              $('#editCount').val(newCount >= 0 ? newCount : 0); // Ensure the count doesn't go below 0
+            });
+
+            $('#editMedicineModal').modal('show');
+
+            $('#editMedicineButton').off('click').on('click', function () {
+              saveEditedMedicine(patientKey, index);
+            });
+          }
+        });
+      }
+
+// For adding new medicine input fields dynamically in the "Add Patient" modal
+$('#addMedicineButton').click(function () {
+    addMedicineInput('#medicineInputs');
+});
+
+// Function to dynamically add new medicine inputs in the "Add Patient" modal
+function addMedicineInput(containerId) {
+    const medicineInputHtml = `
+        <div class="medicine-row extra-inputs">
+            <div class="form-group">
+                <label for="medicineName">Medicine Name</label>
+                <input type="text" class="form-control medicinename" required />
+            </div>
+            <div class="form-group">
+                <label for="time">Time</label>
+                <input type="time" class="form-control time" required />
+            </div>
+            <div class="form-group">
+                <label for="intake">Intake</label>
+                <input type="number" class="form-control intake" required />
+            </div>
+            <div class="form-group">
+                <label for="count">Count</label>
+                <input type="number" class="form-control count" required />
+            </div>
+            <div class="form-group">
+                <label>Intake Type</label><br/>
+                <label class="checkbox-inline">
+                    <input type="checkbox" class="intake-type" value="Before Food"> Before Food
+                </label>
+                <label class="checkbox-inline">
+                    <input type="checkbox" class="intake-type" value="After Food"> After Food
+                </label>
+            </div>
+        </div>
+    `;
+    $(containerId).append(medicineInputHtml);
+}
+
+
+
+      function saveEditedMedicine(patientKey, index) {
+        const medicineName = $('#editMedicineName').val();
+        const time = $('#editTime').val();
+        const intake = $('#editIntake').val();
+        const count = $('#editCount').val();
+
+        const intakeTypes = [];
+        $('.intake-type:checked').each(function () {
+          intakeTypes.push($(this).val());
+        });
+
+        if (medicineName && time && intake && count && intakeTypes.length > 0) {
+          const patientRef = ref(db, patientKey);
+          get(patientRef).then((snapshot) => {
+            const data = snapshot.val();
+            if (data && data.Medicines && data.Medicines.length > index) {
+              data.Medicines[index] = {
+                MedicineName: medicineName,
+                Time: time,
+                Intake: intake,
+                Count: count,
+                IntakeType: intakeTypes
+              };
+
+              update(patientRef, { Medicines: data.Medicines })
+                .then(() => {
+                  alert('Medicine updated successfully!');
+                  $('#editMedicineModal').modal('hide');
+                  viewPatientData(patientKey);
+                })
+                .catch((error) => {
+                  console.error('Error updating medicine:', error);
+                  alert('Error updating medicine.');
+                });
+            }
+          });
+        } else {
+          alert('Please fill in all the details.');
+        }
+      }
+
+      $(document).on('click', '.btn-delete-medicine', function () {
+        const patientKey = $(this).data('patient');
+        const index = $(this).data('index');
+
+        if (confirm('Are you sure you want to delete this medicine?')) {
+          const patientRef = ref(db, patientKey);
+          get(patientRef).then((snapshot) => {
+            const data = snapshot.val();
+            if (data && data.Medicines && data.Medicines.length > index) {
+              data.Medicines.splice(index, 1);
+              update(patientRef, { Medicines: data.Medicines })
+                .then(() => {
+                  alert('Medicine deleted successfully!');
+                  viewPatientData(patientKey);
+                })
+                .catch((error) => {
+                  console.error('Error deleting medicine:', error);
+                  alert('Error deleting medicine.');
+                });
+            }
+          });
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h2 style="text-align: center;">Patient Management System</h2>
+    <br>
+    <br>
+
+    <table id="patient" class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th>Patient Name</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+    <br>
+
+    <div style="margin-left: 600px;">
+      <button type="button" class="btn btn-success" data-toggle="modal" data-target="#patientModal">Add Patient</button>
+    </div>
+
+    <!-- Add Patient Modal -->
+    <div id="patientModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title">Add Patient</h4>
+          </div>
+          <div class="modal-body">
+            <form id="patientform">
+              <div class="form-group">
+                <label for="patientname">Patient Name:</label>
+                <input type="text" class="form-control" id="patientname" required>
+              </div>
+              <div id="medicineInputs">
+                <!-- Dynamic Medicine Inputs will be added here -->
+              </div>
+              <button type="button" class="btn btn-primary" id="addMedicineButton">Add Medicine</button>
+              <button type="submit" class="btn btn-success">Save Patient</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Patient Modal -->
+    <div id="viewPatientModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4> <span id="viewPatientName"></span></h4>
+          </div>
+          <div class="modal-body">
+            <table id="viewMedicineTable" class="table table-bordered table-striped">
+              <thead>
+                <tr>
+                  <th>Medicine Name</th>
+                  <th>Time</th>
+                  <th>Intake</th>
+                  <th>Count</th>
+                  <th>Intake Type</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+              </tbody>
+            </table>
+            <button type="button" class="btn btn-primary" id="newMedicineButton">Add New Medicine</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Medicine Modal -->
+    <div id="editMedicineModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title">Edit Medicine</h4>
+          </div>
+          <div class="modal-body">
+            <form id="editMedicineForm">
+              <div id="editMedicineInputs">
+                <!-- Dynamic Medicine Inputs will be added here for editing -->
+              </div>
+              <button type="button" class="btn btn-success" id="editMedicineButton">Save Changes</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Document Modal -->
+    <div id="uploadDocumentModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title">Upload Document</h4>
+          </div>
+          <div class="modal-body">
+            <form id="uploadDocumentForm">
+              <div class="form-group">
+                <label for="document">Select Document:</label>
+                <input type="file" class="form-control" id="document" required>
+              </div>
+              <button type="submit" class="btn btn-success">Upload</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

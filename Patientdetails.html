@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+  <style>
+    body {
+      background-image: url('https://i.pinimg.com/originals/93/4c/85/934c8571ada4723a826036429d632359.jpg'); /* Change URL as needed */
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+    }
+  
+    .container {
+      background: rgba(255, 255, 255, 0.8); /* White transparent background for content */
+      padding: 20px;
+      border-radius: 10px;
+    }
+  </style>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+ 
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <script type="module">
+    // Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getDatabase, ref, onValue, set, update, get, push } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+    import { getStorage,  ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+     // Firebase configuration
+     const firebaseConfig = {
+  apiKey: "AIzaSyACWB7Nha-Vdxbsfh8TBCKw1U6amo1GwKE",
+  authDomain: "medicinereminder-cdbb6.firebaseapp.com",
+  projectId: "medicinereminder-cdbb6",
+  storageBucket: "medicinereminder-cdbb6.firebasestorage.app",
+  messagingSenderId: "1099466179763",
+  appId: "1:1099466179763:web:29088cf6cdbb8cdc641cc6"
+};
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const storage = getStorage(app);
+     // Initialize Firebase Auth
+  const auth = getAuth();
+  const database = getFirestore(app);
+
+
+
+
+
+
+
+
+  // Logout Icon Event Listener
+  document.getElementById('logoutButton').addEventListener('click', function () {
+    signOut(auth)
+      .then(() => {
+        // Successfully logged out
+        alert('Logged out successfully.');
+        window.location.href = 'Admin.html'; // Redirect to Admin.html
+      })
+      .catch((error) => {
+        console.error('Error logging out:', error);
+        alert('Error logging out.');
+      });
+  });
+
+
+    $(document).ready(function () {
+      loadPatientData();
+
+      // Handle click for adding new medicine in the view patient modal
+      $('#newMedicineButton').click(function () {
+        addNewMedicineRow();
+      });
+
+
+
+
+      // Function to add new medicine input row in the view patient modal
+      function addNewMedicineRow() {
+    const newMedicineRow = `
+      <tr class="new-medicine-row">
+        <td><input type="text" class="form-control new-medicine-name" required></td>
+        <td><input type="time" class="form-control new-medicine-time" required></td>
+        <td><input type="number" class="form-control new-medicine-intake" value="0" required></td>
+        <td><input type="number" class="form-control new-medicine-count" value="0" required></td>
+        <td>
+          <label class="checkbox-inline">
+            <input type="checkbox" class="new-intake-type" value="Before Food"> Before Food
+          </label>
+          <label class="checkbox-inline">
+            <input type="checkbox" class="new-intake-type" value="After Food"> After Food
+          </label>
+        </td>
+        <td>
+          <button class="btn btn-success btn-save-new-medicine">Save</button>
+        </td>
+      </tr>
+    `;
+    
+    $('#viewMedicineTable tbody').append(newMedicineRow);
+
+    // Get references to the last added row's input fields
+    const newRow = $('#viewMedicineTable tbody').find('.new-medicine-row').last();
+    const nameField = newRow.find('.new-medicine-name');
+    const timeField = newRow.find('.new-medicine-time');
+    const intakeField = newRow.find('.new-medicine-intake');
+    const countField = newRow.find('.new-medicine-count');
+    const intakeTypeFields = newRow.find('.new-intake-type');
+
+    // Store the initial count
+    let initialCount = parseInt(countField.val()) || 0;
+
+    // Event listener to update count based on intake
+    intakeField.on('input', function () {
+        let newIntake = parseInt($(this).val()) || 0;
+        newIntake = Math.max(newIntake, 0); // Prevent negative intake values
+
+        const newCount = initialCount - newIntake;
+        countField.val(newCount >= 0 ? newCount : 0); // Ensure count doesn't go below 0
+
+        // Disable intake if count reaches 0
+        if (newCount <= 0) {
+            intakeField.prop('disabled', true);
+        } else {
+            intakeField.prop('disabled', false);
+        }
+    });
+
+    // Optional: Update the initial count if the count field is changed
+    countField.on('input', function () {
+        initialCount = parseInt($(this).val()) || 0;
+        if (initialCount <= 0) {
+            intakeField.val(0).prop('disabled', true);
+        } else {
+            intakeField.prop('disabled', false);
+        }
+    });
+
+   
+}
+
+
+
+
+      // Handle save button click for the new medicine
+      $(document).on('click', '.btn-save-new-medicine', function () {
+    const newRow = $(this).closest('tr');
+    const medicineName = newRow.find('.new-medicine-name').val();
+    const medicineTime = newRow.find('.new-medicine-time').val();
+    const intake = parseInt(newRow.find('.new-medicine-intake').val()) || 0;
+    const count = parseInt(newRow.find('.new-medicine-count').val()) || 0;
+    const intakeTypes = [];
+
+    newRow.find('.new-intake-type:checked').each(function () {
+        intakeTypes.push($(this).val());
+    });
+
+    if (!medicineName || !medicineTime || intakeTypes.length === 0) {
+        alert('Please fill in all required fields.');
+        return;
+    }
+
+    const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+    let patientName = $('#viewPatientName').text();
+
+    if (!loggedInAdminKey || !patientName) {
+        alert('Error: Missing admin or patient information.');
+        return;
+    }
+
+    // Ensure patientName contains only the actual patient's name
+    patientName = patientName.replace(/^Admin\/.*\/Patients\//, '');
+
+    const sanitizedAdminKey = loggedInAdminKey.replace(/^Admin\//, '');
+    const patientRef = ref(db, `Admin/${sanitizedAdminKey}/Patients/${patientName}/Medicines`);
+
+    const newMedicine = {
+        MedicineName: medicineName,
+        Time: medicineTime,
+        Intake: intake,
+        Count: count,
+        IntakeType: intakeTypes,
+    };
+
+    push(patientRef, newMedicine)
+        .then(() => {
+            console.log('New medicine added successfully!');
+            alert('Medicine saved successfully!');
+           // newRow.remove(); // Remove the input row after saving
+            // Refresh modal contents to display the new medicine
+            viewPatientData(`Admin/${sanitizedAdminKey}/Patients/${patientName}`);
+        })
+        .catch((error) => {
+            console.error('Error saving medicine:', error);
+            alert('Failed to save medicine. Please try again.');
+        });
+});
+
+
+
+
+
+
+      // Handle form submission for adding patient
+      $('#patientform').submit(function (e) {
+  e.preventDefault();
+  const patientName = $('#patientname').val();
+  const patientEmail = $('#patientemail').val();
+  const medicines = [];
+
+  // Collect medicines
+  $('#medicineInputs .medicine-row').each(function () {
+    const medicineName = $(this).find('.medicinename').val();
+    const time = $(this).find('.time').val();
+    const intake = $(this).find('.intake').val();
+    const count = $(this).find('.count').val();
+
+    const intakeTypes = [];
+    $(this).find('.intake-type:checked').each(function () {
+      intakeTypes.push($(this).val());
+    });
+
+    if (medicineName && time && intake && count && intakeTypes.length > 0) {
+      medicines.push({
+        MedicineName: medicineName,
+        Time: time,
+        Intake: intake,
+        Count: count,
+        IntakeType: intakeTypes,
+      });
+    }
+  });
+
+  if (patientName && patientEmail) {
+    // Get the logged-in admin's key from local storage
+    const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+    if (!loggedInAdminKey) {
+      alert('Admin not logged in. Please log in again.');
+      return;
+    }
+
+    console.log('Admin Key:', loggedInAdminKey);
+
+    // Save patient data under the logged-in admin's node
+    const patientRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientName}`);
+
+    update(patientRef, {
+      email: patientEmail,
+      Medicines: medicines,
+      Alarm: 0 // Adding Alarm: false key-value pair
+      //AlarmStatus: false // Adding AlarmStatus: false key-value pair
+    })
+      .then(() => {
+        alert('Patient data saved successfully!');
+        $('#patientform')[0].reset();
+        $('#medicineInputs').empty(); // Clear the inputs
+        $('#patientModal').modal('hide');
+        loadPatientData(); // Refresh the data
+      })
+      .catch((error) => {
+        console.error('Error saving patient data:', error);
+        alert('Error saving patient data.');
+      });
+  } else {
+    alert('Please fill in all the required details.');
+  }
+});
+
+
+function loadPatientData() {
+  const patientTableBody = $('#patient tbody');
+
+  // Get the logged-in admin's key
+  const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+  if (!loggedInAdminKey) {
+    alert('Admin not logged in. Please log in again.');
+    return;
+  }
+
+  const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+
+  onValue(patientsRef, (snapshot) => {
+    const data = snapshot.val();
+    patientTableBody.empty();
+
+    if (data) {
+      for (const key in data) {
+        const patient = data[key];
+        const row = $('<tr>');
+        row.append($('<td>').text(key));
+
+        const viewButton = $('<button>')
+          .text('View')
+          .addClass('btn btn-primary')
+          .on('click', function () {
+            viewPatientData(`Admin/${loggedInAdminKey}/Patients/${key}`);
+          });
+
+// Upload Document Button Logic
+const uploadDocumentButton = $('<button>')
+  .text('Upload Document')
+  .addClass('btn btn-secondary')
+  .on('click', function () {
+    $('#uploadDocumentModal').modal('show'); // Show modal
+    const patientPath = `Admin/${loggedInAdminKey}/Patients/${key}`;
+    setupDocumentUpload(patientPath);
+  });
+      
+  
+
+  const deleteButton = $('<button>')
+          .text('Delete')
+          .addClass('btn btn-danger')
+          .on('click', function () {
+            deletePatient(`Admin/${loggedInAdminKey}/Patients/${key}`);
+          });
+
+        const actionCell = $('<td>').append(viewButton).append(deleteButton).append(uploadDocumentButton);
+        row.append(actionCell);
+        patientTableBody.append(row);
+      }
+    } else {
+      patientTableBody.append(
+        $('<tr>').append($('<td>').attr('colspan', '2').text('No data available'))
+      );
+    }
+  });
+}
+
+
+
+// Delete Medicine Handler
+$(document).on('click', '.btn-delete-medicine', function () {
+    const medicineKey = $(this).data('key');
+    const patientKey = $(this).data('patient');
+
+    if (confirm('Are you sure you want to delete this medicine?')) {
+        const medicineRef = ref(db, `${patientKey}/Medicines/${medicineKey}`);
+        set(medicineRef, null)
+            .then(() => {
+                alert('Medicine deleted successfully!');
+                viewPatientData(patientKey); // Refresh the modal
+            })
+            .catch((error) => {
+                console.error('Error deleting medicine:', error);
+                alert('Error deleting medicine.');
+            });
+    }
+});
+
+function viewPatientData(key) {
+    const patientRef = ref(db, key);
+    onValue(patientRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            $('#viewPatientName').text(key.replace(/.*\/Patients\//, '').replace(/\/Medicines$/, ''));
+            $('#viewPatientEmail').text(data.email || 'No email available'); // Use 'email' field
+
+            const tbody = $('#viewMedicineTable tbody');
+            tbody.empty();
+
+            // Check if Medicines exist and iterate properly
+            if (data.Medicines) {
+                Object.keys(data.Medicines).forEach((medicineKey) => {
+                    const medicine = data.Medicines[medicineKey];
+                    const intakeTypesText = medicine.IntakeType ? medicine.IntakeType.join(', ') : '';
+                    const row = `
+                        <tr>
+                            <td>${medicine.MedicineName}</td>
+                            <td>${medicine.Time}</td>
+                            <td>${medicine.Intake}</td>
+                            <td>${medicine.Count}</td>
+                            <td>${intakeTypesText}</td>
+                            <td>
+                                <button class="btn btn-warning btn-edit-medicine" data-key="${medicineKey}" data-patient="${key}">Edit</button>
+                                <button class="btn btn-danger btn-delete-medicine" data-key="${medicineKey}" data-patient="${key}">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.append(row);
+                });
+            } else {
+                tbody.append('<tr><td colspan="6">No medicines found.</td></tr>');
+            }
+
+            $('#viewPatientModal').modal('show');
+        } else {
+            alert('No data found for this patient.');
+        }
+    });
+}
+
+
+$(document).on('click', '.btn-edit-medicine', function () {
+    const medicineKey = $(this).data('key');
+    const patientKey = $(this).data('patient');
+
+    const patientRef = ref(db, patientKey);
+    get(patientRef).then((snapshot) => {
+        const data = snapshot.val();
+        if (data && data.Medicines && data.Medicines[medicineKey]) {
+            const medicine = data.Medicines[medicineKey];
+
+            // Populate modal fields with medicine data
+            $('#editMedicineName').val(medicine.MedicineName);
+            $('#editTime').val(medicine.Time);
+            $('#editIntake').val(medicine.Intake);
+            $('#editCount').val(medicine.Count);
+
+            // Reset and populate IntakeType checkboxes
+            $('.edit-intake-type').prop('checked', false).prop('disabled', false); // Ensure enabled
+            if (medicine.IntakeType) {
+                medicine.IntakeType.forEach((type) => {
+                    $(`.edit-intake-type[value="${type}"]`).prop('checked', true);
+                });
+            }
+
+            // Show the modal
+            $('#editMedicineModal').modal('show');
+
+            // Save changes on Save button click
+            $('#editMedicineButton').off('click').on('click', function () {
+                const updatedMedicine = {
+                    MedicineName: $('#editMedicineName').val(),
+                    Time: $('#editTime').val(),
+                    Intake: parseInt($('#editIntake').val()) || 0,
+                    Count: parseInt($('#editCount').val()) || 0,
+                    IntakeType: $('.edit-intake-type:checked').map(function () {
+                        return $(this).val();
+                    }).get(),
+                };
+
+                const medicineRef = ref(db, `${patientKey}/Medicines/${medicineKey}`);
+                update(medicineRef, updatedMedicine)
+                    .then(() => {
+                        alert('Medicine updated successfully!');
+                        $('#editMedicineModal').modal('hide');
+
+                        // Refresh patient data to show updated IntakeType
+                        viewPatientData(patientKey);
+                    })
+                    .catch((error) => {
+                        console.error('Error updating medicine:', error);
+                        alert('Error updating medicine.');
+                    });
+            });
+        }
+    });
+});
+
+
+
+
+
+
+      function populateEditModal(patientKey, index) {
+    const patientRef = ref(db, patientKey);
+    get(patientRef).then((snapshot) => {
+        const data = snapshot.val();
+        if (data && data.Medicines && data.Medicines.length > index) {
+            $('#editMedicineInputs').empty();
+            const medicine = data.Medicines[index];
+            const intakeTypes = medicine.IntakeType || [];
+
+            $('#editMedicineInputs').append(`
+                <div class="medicine-row extra-inputs">
+                  <div class="form-group">
+                    <label for="editMedicineName">Medicine Name</label>
+                    <input type="text" id="editMedicineName" class="form-control" value="${medicine.MedicineName}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editTime">Time</label>
+                    <input type="time" id="editTime" class="form-control" value="${medicine.Time}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editIntake">Intake</label>
+                    <input type="number" id="editIntake" class="form-control" value="${medicine.Intake}" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="editCount">Count</label>
+                    <input type="number" id="editCount" class="form-control" value="${medicine.Count}" required />
+                  </div>
+                  <div clapss="form-group">
+                    <label>Intake Type</label><br/>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" class="intake-type" value="Before Food" ${intakeTypes.includes('Before Food') ? 'checked' : ''}> Before Food
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" class="intake-type" value="After Food" ${intakeTypes.includes('After Food') ? 'checked' : ''}> After Food
+                    </label>
+                  </div>
+                </div>
+            `);
+
+           // const initialCount = parseInt(medicine.Count); // Store the initial count as a number
+
+            // Add event listener for changes in Intake field
+           // $('#editIntake').on('input', function () {
+               // let newIntake = parseInt($(this).val()) || 0; // Get intake value as a number
+               // newIntake = Math.max(newIntake, 0); // Prevent negative intake values
+
+               // const newCount = initialCount - newIntake; // Calculate the new count
+              //  $('#editCount').val(newCount >= 0 ? newCount : 0); // Ensure the count doesn’t go below 0
+//
+                // Freeze intake input when count is 0
+              //  if (newCount <= 0) {
+                //    $(this).prop('disabled', true); // Disable intake if count reaches 0
+               // } else {
+              //      $(this).prop('disabled', false); // Enable intake if count is positive
+             //   }
+            //});
+
+            $('#editMedicineModal').modal('show');
+
+            $('#editMedicineButton').off('click').on('click', function () {
+                saveEditedMedicine(patientKey, index);
+            });
+        }
+    });
+}
+
+// For adding new medicine input fields dynamically in the "Add Patient" modal
+$('#addMedicineButton').click(function () {
+    addMedicineInput('#medicineInputs');
+});
+
+// Function to dynamically add new medicine inputs in the "Add Patient" modal
+function addMedicineInput(containerId) {
+    const medicineInputHtml = `
+        <div class="medicine-row extra-inputs">
+            <div class="form-group">
+                <label for="medicineName">Medicine Name</label>
+                <input type="text" class="form-control medicinename" required />
+            </div>
+            <div class="form-group">
+                <label for="time">Time</label>
+                <input type="time" class="form-control time" required />
+            </div>
+            <div class="form-group">
+                <label for="intake">Intake</label>
+                <input type="number" class="form-control intake" required />
+            </div>
+            <div class="form-group">
+                <label for="count">Count</label>
+                <input type="number" class="form-control count" required />
+            </div>
+            <div class="form-group">
+                <label>Intake Type</label><br/>
+                <label class="checkbox-inline">
+                    <input type="checkbox" class="intake-type" value="Before Food"> Before Food
+                </label>
+                <label class="checkbox-inline">
+                    <input type="checkbox" class="intake-type" value="After Food"> After Food
+                </label>
+            </div>
+        </div>
+    `;
+    $(containerId).append(medicineInputHtml);
+
+    // Store the previous intake value to calculate difference
+   // let previousIntake = 0;
+
+    // Event listener to adjust count based on intake change
+   // $(containerId).find('.extra-inputs:last .intake').on('input', function () {
+      //  const newIntake = parseInt($(this).val()) || 0;
+      //  const countField = $(this).closest('.extra-inputs').find('.count');
+      //  const currentCount = parseInt(countField.val()) || 0;
+
+        // Calculate the difference and update count
+      //  const intakeDifference = newIntake - previousIntake;
+      //  const newCount = currentCount - intakeDifference;
+
+        // Update count and check if it reached 0
+       // if (newCount <= 0) {
+         ///   countField.val(0);
+         //   $(this).val(previousIntake);  // Revert to previous intake to prevent further change
+         //   $(this).prop('disabled', true);  // Disable intake input
+       // } else {
+         //   countField.val(newCount);
+          //  previousIntake = newIntake;  // Update previous intake
+       // }
+   // });
+}
+
+      function saveEditedMedicine(patientKey, index) {
+        const medicineName = $('#editMedicineName').val();
+        const time = $('#editTime').val();
+        const intake = $('#editIntake').val();
+        const count = $('#editCount').val();
+
+        const intakeTypes = [];
+        $('.intake-type:checked').each(function () {
+          intakeTypes.push($(this).val());
+        });
+
+        if (medicineName && time && intake && count && intakeTypes.length > 0) {
+          const patientRef = ref(db, patientKey);
+          get(patientRef).then((snapshot) => {
+            const data = snapshot.val();
+            if (data && data.Medicines && data.Medicines.length > index) {
+              data.Medicines[index] = {
+                MedicineName: medicineName,
+                Time: time,
+                Intake: intake,
+                Count: count,
+                IntakeType: intakeTypes
+              };
+
+              update(patientRef, { Medicines: data.Medicines })
+                .then(() => {
+                  alert('Medicine updated successfully!');
+                  $('#editMedicineModal').modal('hide');
+                  viewPatientData(patientKey);
+                })
+                .catch((error) => {
+                  console.error('Error updating medicine:', error);
+                  alert('Error updating medicine.');
+                });
+            }
+          });
+        } else {
+          alert('Please fill in all the details.');
+        }
+      }
+
+      $(document).on('click', '.btn-delete-medicine', function () {
+        const patientKey = $(this).data('patient');
+        const index = $(this).data('index');
+
+        if (confirm('Are you sure you want to delete this medicine?')) {
+          const patientRef = ref(db, patientKey);
+          get(patientRef).then((snapshot) => {
+            const data = snapshot.val();
+            if (data && data.Medicines && data.Medicines.length > index) {
+              data.Medicines.splice(index, 1);
+              update(patientRef, { Medicines: data.Medicines })
+                .then(() => {
+                  alert('Medicine deleted successfully!');
+                  viewPatientData(patientKey);
+                })
+                .catch((error) => {
+                  console.error('Error deleting medicine:', error);
+                  alert('Error deleting medicine.');
+                });
+            }
+          });
+        }
+      });
+    });
+
+
+
+    function deletePatient(patientKey) {
+  // Confirm before deleting
+  if (confirm('Are you sure you want to delete this patient? This action cannot be undone.')) {
+    const patientRef = ref(db, patientKey);
+
+    // Set the patient node to null to delete it
+    set(patientRef, null)
+      .then(() => {
+        alert('Patient deleted successfully!');
+        loadPatientData(); // Refresh the patient list after deletion
+      })
+      .catch((error) => {
+        console.error('Error deleting patient:', error);
+        alert('Error deleting patient. Please try again.');
+      });
+  }
+}
+
+$(document).on('click', '#submitRequest', function () {
+  const emailAddress = $('#To').val().trim();
+  const medicineDetails = $('#requestedMedicines').val().trim();
+
+  // Validate the form
+  if (!emailAddress || !medicineDetails) {
+    alert('Please fill in all fields.');
+    return;
+  }
+
+  // Show a success alert
+  alert('Request sent  successfully!');
+
+  // Optionally, reset the form fields
+  $('#requestMedicineForm')[0].reset();
+
+  // Close the modal
+  $('#requestmedicineModal').modal('hide');
+});
+
+
+
+// Function to convert image file to base64 string
+function convertImageToBase64(file, callback) {
+    if (!file.type.startsWith("image/")) {
+        alert("Only image files are allowed.");
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = function () {
+        const base64String = reader.result.split(",")[1]; // Remove the data URL prefix
+        callback(base64String);
+    };
+
+    reader.readAsDataURL(file);
+}
+
+// Function to convert image to Base64 and upload to Firestore
+async function uploadImageAsBase64ToFirestore(file, userId, metadataCollection) {
+    if (!file.type.startsWith("image/")) {
+        alert("Only image files are allowed.");
+        return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onloadend = async function () {
+        const base64String = reader.result.split(",")[1]; // Remove data URL prefix
+
+        try {
+            // Firestore document reference
+            const docRef = doc(db, metadataCollection, `${userId}_${Date.now()}`);
+
+            // Save metadata and Base64 string to Firestore
+            await setDoc(docRef, {
+                fileName: file.name,
+                base64: base64String, // Store the Base64 string
+                uploadTime: new Date().toISOString(),
+                userId: userId
+            });
+
+            alert("Image uploaded successfully!");
+        } catch (error) {
+            console.error("Error uploading image to Firestore:", error);
+            alert("Failed to upload image. Please try again.");
+        }
+    };
+
+    reader.readAsDataURL(file); // Start reading the file
+}
+
+
+async function uploadImage() {
+    const fileInput = document.getElementById("document");
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert("Please select an image to upload.");
+        return;
+    }
+
+    const loggedInAdminKey = localStorage.getItem("loggedInAdminKey");
+    if (!loggedInAdminKey) {
+        alert("Admin not logged in. Please log in again.");
+        return;
+    }
+
+    const patientPath = document.getElementById("uploadDocumentModal").dataset.patientPath;
+    if (!patientPath) {
+        alert("Patient path not set. Please select a valid patient.");
+        return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+        alert("Only image files are allowed.");
+        return;
+    }
+
+    // Extract patient name from the path
+    const patientName = patientPath.split("/").pop();
+
+    try {
+        // 🔹 Fetch patient email from Firebase Realtime Database
+        const patientRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientName}/email`);
+        const patientEmailSnapshot = await get(patientRef);
+        const patientEmail = patientEmailSnapshot.exists() ? patientEmailSnapshot.val() : "No email found";
+
+        console.log("🟢 Patient Email Found:", patientEmail);
+
+        const reader = new FileReader();
+        reader.onloadend = async function () {
+            const base64String = reader.result.split(",")[1]; // Remove the data URL prefix
+
+            // Firestore document reference
+            const documentId = `${patientPath.replace(/\//g, "_")}_${Date.now()}`;
+            const docRef = doc(database, "PatientImages", documentId);
+
+            // Save the image with email in Firestore
+            await setDoc(docRef, {
+                patientPath: patientPath,
+                fileName: file.name,
+                fileType: file.type,
+                imageContent: base64String, // Store Base64 string
+                uploadedAt: new Date().toISOString(),
+                email: patientEmail // 🔹 Save patient's email
+            });
+
+            alert("Image uploaded successfully!");
+            document.getElementById("uploadDocumentForm").reset();
+            document.getElementById("statusMessage").textContent = "Upload successful!";
+        };
+
+        reader.readAsDataURL(file); // Read file as Base64
+    } catch (error) {
+        console.error("🚨 ERROR Uploading Image:", error);
+        alert(`Failed to upload image. Error: ${error.message}`);
+    }
+}
+
+
+
+window.uploadImage = uploadImage;
+
+
+function setupDocumentUpload(patientPath) {
+    document.getElementById("uploadDocumentModal").dataset.patientPath = patientPath;
+}
+
+
+function checkAndUpdateAlarm() {
+    const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+    if (!loggedInAdminKey) {
+        console.error('Admin not logged in. Cannot check alarms.');
+        return;
+    }
+
+    const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+    const currentTime = new Date().toLocaleTimeString('en-US', {
+        hour12: false, // 24-hour format
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+
+    onValue(patientsRef, (snapshot) => {
+        const patients = snapshot.val();
+        if (patients) {
+            Object.keys(patients).forEach((patientKey) => {
+                const patient = patients[patientKey];
+                const medicines = patient.Medicines || {}; // Default to an empty object
+
+                let alarmTriggered = 0;
+
+                // Loop through medicines (handle object structure)
+                Object.keys(medicines).forEach((medicineKey) => {
+                    const medicine = medicines[medicineKey];
+                    if (medicine.Time === currentTime) {
+                        alarmTriggered = 1;
+                    }
+                });
+
+                const patientRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}`);
+                if (alarmTriggered) {
+                    update(patientRef, { Alarm: 1 })
+                        .then(() => console.log(`Alarm set to true for patient: ${patientKey}`))
+                        .catch((error) => console.error(`Error updating alarm for ${patientKey}:`, error));
+                } else {
+                    update(patientRef, { Alarm: 0 })
+                        .then(() => console.log(`Alarm set to false for patient: ${patientKey}`))
+                        .catch((error) => console.error(`Error resetting alarm for ${patientKey}:`, error));
+                }
+            });
+        }
+    }, {
+        onlyOnce: true,
+    });
+}
+
+// Schedule the check to run every minute
+setInterval(checkAndUpdateAlarm, 60000);
+
+
+
+
+function monitorAlarmStatusAndUpdateCount() {
+  const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+  if (!loggedInAdminKey) {
+    console.error('Admin not logged in. Cannot monitor AlarmStatus.');
+    return;
+  }
+
+  const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+
+  // Listen for changes in patients
+  onValue(patientsRef, (snapshot) => {
+    const patients = snapshot.val();
+    if (patients) {
+      Object.keys(patients).forEach((patientKey) => {
+        const patient = patients[patientKey];
+
+        // Check if AlarmStatus is true
+        if (patient.AlarmStatus === true) {
+          const medicinesRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}/Medicines`);
+          
+          // Get medicines for the patient
+          get(medicinesRef).then((medicineSnapshot) => {
+            const medicines = medicineSnapshot.val();
+            if (medicines) {
+              Object.keys(medicines).forEach((medicineKey) => {
+                const medicine = medicines[medicineKey];
+
+                // Decrement count by 1 if count > 0
+                if (medicine.Count > 0) {
+                  const updatedCount = medicine.Count - 1;
+
+                  // Update the count in the database
+                  update(ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}/Medicines/${medicineKey}`), {
+                    Count: updatedCount,
+                  })
+                    .then(() => console.log(`Count decremented for medicine: ${medicine.MedicineName}, new count: ${updatedCount}`))
+                    .catch((error) => console.error('Error updating medicine count:', error));
+                }
+              });
+            }
+          });
+
+          // Reset AlarmStatus to false after processing
+          update(ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}`), { AlarmStatus: false })
+            .then(() => console.log(`AlarmStatus reset for patient: ${patientKey}`))
+            .catch((error) => console.error('Error resetting AlarmStatus:', error));
+        }
+      });
+    }
+  });
+}
+
+// Call the function to start monitoring
+monitorAlarmStatusAndUpdateCount();
+
+
+
+function monitorAlarmStatusAndCheckStock() {
+  const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+  if (!loggedInAdminKey) {
+    console.error('Admin not logged in. Cannot monitor AlarmStatus or stock.');
+    return;
+  }
+
+  const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+
+  // Listen for changes in patients
+  onValue(patientsRef, (snapshot) => {
+    const patients = snapshot.val();
+    if (patients) {
+      Object.keys(patients).forEach((patientKey) => {
+        const patient = patients[patientKey];
+        const medicinesRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}/Medicines`);
+
+        // Monitor medicines
+        onValue(medicinesRef, (medicineSnapshot) => {
+          const medicines = medicineSnapshot.val();
+          if (medicines) {
+            Object.keys(medicines).forEach((medicineKey) => {
+              const medicine = medicines[medicineKey];
+
+              // Check Count and show notification if Count == 3
+              if (medicine.Count === 3) {
+                showPurchaseNotification(medicine.MedicineName);
+              }
+            });
+          }
+          
+        });
+      });
+    }
+  });
+}
+
+// Trigger purchase notification
+function showPurchaseNotification(medicineName) {
+  // Use a toast or alert for notification
+  alert(`Stock Alert: Please purchase more of the medicine "${medicineName}". Current stock is low (Count: 3).`);
+
+  // Optionally, you can display a toast notification using libraries like Toastify or Bootstrap Toast
+  // Example using Bootstrap Toast:
+  const notification = `
+    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <strong class="mr-auto">Stock Alert</strong>
+        <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="toast-body">
+        Please purchase more of the medicine "${medicineName}". Current stock is low (Count: 3).
+      </div>
+    </div>
+  `;
+  $('body').append(notification);
+  $('.toast').toast({ delay: 5000 }).toast('show');
+  
+}
+
+
+
+
+
+
+function monitorUnresponsivePatients() {
+    const loggedInAdminKey = localStorage.getItem("loggedInAdminKey");
+
+    if (!loggedInAdminKey) {
+        console.error("Admin not logged in. Cannot monitor Alarmstatus.");
+        return;
+    }
+
+    console.log(`Monitoring unresponsive patients for Admin: ${loggedInAdminKey}`);
+
+    const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+
+    // Listen for real-time changes in all patients
+    onValue(patientsRef, (snapshot) => {
+        const patients = snapshot.val();
+        if (!patients) return;
+
+        Object.entries(patients).forEach(([patientKey, patientData]) => {
+            if (patientData.Alarm === 1) {
+                const medicinesRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}/Medicines`);
+
+                // Save initial count snapshot
+                get(medicinesRef).then((initialSnap) => {
+                    const initialCounts = {};
+                    const initialData = initialSnap.val();
+
+                    if (!initialData) return;
+
+                    Object.entries(initialData).forEach(([medKey, medVal]) => {
+                        initialCounts[medKey] = medVal.Count || 0;
+                    });
+
+                    // Wait 30 seconds before re-check
+                    setTimeout(() => {
+                        get(medicinesRef).then((finalSnap) => {
+                            const finalData = finalSnap.val();
+                            let countChanged = false;
+
+                            Object.entries(finalData || {}).forEach(([medKey, medVal]) => {
+                                const newCount = medVal.Count || 0;
+                                if (newCount < (initialCounts[medKey] || 0)) {
+                                    countChanged = true;
+                                }
+                            });
+
+                            // If no medicine count was reduced, trigger notrespond
+                            if (!countChanged) {
+                                const alarmStatusRef = ref(db, `Admin/${loggedInAdminKey}/Alarmstatus`);
+                                set(alarmStatusRef, "notrespond").then(() => {
+                                    showNotification(`⚠️ Patient ${patientKey} is not responding to the Alarm`);
+                                    console.warn(`Alarmstatus set to 'notrespond' for patient ${patientKey}`);
+                                });
+                            }
+                        });
+                    }, 40000); // 60 seconds
+                });
+            }
+        });
+    });
+}
+
+
+
+
+
+// Function to show a notification
+function showNotification(message) {
+    const list = document.getElementById("notificationList");
+    const count = document.getElementById("notificationCount");
+
+    const item = document.createElement("li");
+    item.textContent = message;
+    list.appendChild(item);
+    count.style.display = "inline";
+
+    Toastify({
+        text: message,
+        duration: 5000,
+        gravity: "top",
+        position: "right",
+        backgroundColor: "red",
+    }).showToast();
+}
+
+
+// Toggle Notification Panel
+document.addEventListener('DOMContentLoaded', function () {
+    monitorUnresponsivePatients();
+});
+
+
+
+
+// Function to monitor medicine stock and trigger popup
+function monitorMedicineStock() {
+    const loggedInAdminKey = localStorage.getItem('loggedInAdminKey');
+    if (!loggedInAdminKey) {
+        console.error('Admin not logged in. Cannot monitor medicine stock.');
+        return;
+    }
+
+    const patientsRef = ref(db, `Admin/${loggedInAdminKey}/Patients`);
+
+    onValue(patientsRef, (snapshot) => {
+        const patients = snapshot.val();
+        if (patients) {
+            Object.keys(patients).forEach((patientKey) => {
+                const patient = patients[patientKey];
+                const medicinesRef = ref(db, `Admin/${loggedInAdminKey}/Patients/${patientKey}/Medicines`);
+
+                onValue(medicinesRef, (medicineSnapshot) => {
+                    const medicines = medicineSnapshot.val();
+                    if (medicines) {
+                        Object.keys(medicines).forEach((medicineKey) => {
+                            const medicine = medicines[medicineKey];
+
+                            // Show popup if count is below 3
+                            if (medicine.Count < 5) {
+                                showOrderPopup(medicine.MedicineName);
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    });
+}
+
+// Function to show Bootstrap modal with Netmeds link
+function showOrderPopup(medicineName) {
+    const netmedsLink = `https://www.netmeds.com/catalogsearch/result?q=${encodeURIComponent(medicineName)}`;
+    $('#medicineName').text(medicineName);
+    $('#orderLink').attr('href', netmedsLink);
+    $('#orderLink').attr('target', '_blank'); // Open link in a new tab
+    $('#orderMedicineModal').modal('show');
+}
+
+// Start monitoring stock
+monitorMedicineStock();
+
+
+
+
+
+
+
+  </script>
+</head>
+<body>
+  <div style="margin-left: 1400px; margin-top: 20px;">
+    <button type="button" class="btn btn-link" id="logoutButton" title="Logout">
+      <span class="glyphicon glyphicon-log-out" style="font-size: 24px; color: red;"></span>
+    </button>
+  </div>
+  <div class="container">
+    <h2 style="text-align: center;">Patient Management System</h2>
+    <br>
+    <br>
+
+    <table id="patient" class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th>Patient Name</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+    <br>
+
+    <div style="margin-left: 600px;">
+      <button type="button" class="btn btn-success" data-toggle="modal" data-target="#patientModal">Add Patient</button>
+
+    </div>
+
+    <!-- Add Patient Modal -->
+    <div id="patientModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title">Add Patient</h4>
+          </div>
+          <div class="modal-body">
+            <form id="patientform">
+              <div class="form-group">
+                <label for="patientname">Patient Name:</label>
+                <input type="text" class="form-control" id="patientname" required>
+              </div>
+              
+              <!-- Add Email Field -->
+              <div class="form-group">
+                <label for="patientemail">Patient Email:</label>
+                <input type="email" class="form-control" id="patientemail" required>
+              </div>
+    
+              <div id="medicineInputs">
+                <!-- Dynamic Medicine Inputs will be added here -->
+              </div>
+              <button type="button" class="btn btn-primary" id="addMedicineButton">Add Medicine</button>
+              <button type="submit" class="btn btn-success">Save Patient</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Patient Modal -->
+    <div id="viewPatientModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4> <span id="viewPatientName"></span></h4>
+          </div>
+          <div class="modal-body">
+            <!-- Patient Email Section -->
+            <p><strong>Patient Email:</strong> <span id="viewPatientEmail"></span></p>
+
+          </div>
+          <div class="modal-body">
+            <table id="viewMedicineTable" class="table table-bordered table-striped">
+              <thead>
+                <tr>
+                  <th>Medicine Name</th>
+                  <th>Time</th>
+                  <th>Intake</th>
+                  <th>Count</th>
+                  <th>Intake Type</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+              </tbody>
+            </table>
+            <button type="button" class="btn btn-primary" id="newMedicineButton">Add New Medicine</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- Edit Medicine Modal -->
+<div id="editMedicineModal" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title">Edit Medicine</h4>
+      </div>
+      <div class="modal-body">
+        <form id="editMedicineForm">
+          <!-- Medicine Name -->
+          <div class="form-group">
+            <label for="editMedicineName">Medicine Name</label>
+            <input type="text" id="editMedicineName" class="form-control" placeholder="Enter medicine name" required />
+          </div>
+
+          <!-- Medicine Time -->
+          <div class="form-group">
+            <label for="editTime">Time</label>
+            <input type="time" id="editTime" class="form-control" required />
+          </div>
+
+          <!-- Intake -->
+          <div class="form-group">
+            <label for="editIntake">Intake</label>
+            <input type="number" id="editIntake" class="form-control" placeholder="Enter intake amount" required />
+          </div>
+
+          <!-- Count -->
+          <div class="form-group">
+            <label for="editCount">Count</label>
+            <input type="number" id="editCount" class="form-control" placeholder="Enter count" required />
+          </div>
+
+          <!-- Intake Type -->
+          <div class="form-group">
+            <label>Intake Type</label><br />
+            <label class="checkbox-inline">
+              <input type="checkbox" class="edit-intake-type" value="Before Food" /> Before Food
+            </label>
+            <label class="checkbox-inline">
+              <input type="checkbox" class="edit-intake-type" value="After Food" /> After Food
+            </label>
+          </div>
+
+          <!-- Save Button -->
+          <button type="button" class="btn btn-success" id="editMedicineButton">Save Changes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+    <!-- Upload Document Modal -->
+    <div id="uploadDocumentModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+          <div class="modal-content">
+              <div class="modal-header">
+                  <button type="button" class="close" data-dismiss="modal">&times;</button>
+                  <h4 class="modal-title">Upload Document</h4>
+              </div>
+              <div class="modal-body">
+                <form id="uploadDocumentForm" onsubmit="event.preventDefault(); uploadImage();">
+                  <div class="form-group">
+                      <label for="document">Select Document:</label>
+                      <input type="file" class="form-control" id="document" required>
+                  </div>
+                  <p id="statusMessage"></p>
+                  <button type="submit" class="btn btn-success">Upload</button>
+              </form>
+              
+              </div>
+          </div>
+      </div>
+  </div>
+  
+
+
+
+
+    <!-- Request Medicine Modal -->
+<div id="requestmedicineModal" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title">Request Medicines</h4>
+      </div>
+      <div class="modal-body">
+        <form id="requestMedicineForm">
+          <!-- Patient Name -->
+          <div class="form-group">
+            <label for="patientName">To</label>
+            <input type="text" id="To" class="form-control" placeholder="Enter Email Address" required />
+          </div>
+
+          <!-- Medicine Details -->
+          <div class="form-group">
+            <label for="requestedMedicines">Medicines</label>
+            <textarea id="requestedMedicines" class="form-control" placeholder="Enter medicine details" rows="4" required></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="button" class="btn btn-primary" id="submitRequest">Submit</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notification Icon -->
+<div style="position: absolute; top: 20px; right: 100px;">
+  <button id="notificationButton" class="btn btn-warning" title="Notifications">
+    <span class="glyphicon glyphicon-bell" style="font-size: 24px;"></span>
+    <span id="notificationCount" class="badge" style="background-color: red; display: none;">1</span>
+  </button>
+</div>
+
+<!-- Notification List -->
+<div id="notificationPanel" style="display: none; position: absolute; top: 60px; right: 100px; background: white; padding: 10px; border: 1px solid #ccc;">
+  <h4>Notifications</h4>
+  <ul id="notificationList"></ul>
+</div>
+<!-- Order Medicine Modal -->
+<div id="orderMedicineModal" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+      <div class="modal-content">
+          <div class="modal-header">
+              <button type="button" class="close" data-dismiss="modal">&times;</button>
+              <h4 class="modal-title">Low Stock Alert!</h4>
+          </div>
+          <div class="modal-body">
+              <p>⚠️ Medicine <strong><span id="medicineName"></span></strong> is running low (below 3).</p>
+              <p>Order now from <a id="orderLink" class="btn btn-primary" target="_blank">Netmeds</a></p>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          </div>
+      </div>
+  </div>
+</div>
+
+
+
+  </div>
+
+
+  <div id="notificationArea" style="display: none; background: red; color: white; padding: 10px; text-align: center; position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000;">
+  </div>
+  
+
+</body>
+</html>

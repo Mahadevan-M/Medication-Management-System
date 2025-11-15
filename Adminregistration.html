@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registration Page</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <script type="module">
+    // Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+  
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyACWB7Nha-Vdxbsfh8TBCKw1U6amo1GwKE",
+      authDomain: "medicinereminder-cdbb6.firebaseapp.com",
+      projectId: "medicinereminder-cdbb6",
+      storageBucket: "medicinereminder-cdbb6.firebasestorage.app",
+      messagingSenderId: "1099466179763",
+      appId: "1:1099466179763:web:29088cf6cdbb8cdc641cc6"
+    };
+  
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+  
+    // Handle form submission
+    $(document).ready(function () {
+      $('#registrationForm').submit(function (event) {
+        event.preventDefault(); // Prevent default form submission
+        const name = $('#name').val();
+        const email = $('#email').val();
+        const password = $('#password').val();
+  
+        // Generate a unique key for each admin and save details
+        const adminRef = ref(database, 'Admin'); // Parent node
+        const newAdminRef = push(adminRef); // Generate a unique key
+        set(newAdminRef, {
+          name: name,
+          email: email,
+          password: password
+        })
+          .then(() => {
+            alert('Registration successful!');
+            $('#registrationForm')[0].reset(); // Reset the form
+            // Redirect to Admin.html after successful registration
+            window.location.href = 'Admin.html';
+          })
+          .catch((error) => {
+            console.error('Error saving data:', error);
+            alert('Error saving data. Please try again.');
+          });
+      });
+    });
+  </script>
+  
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: Arial, sans-serif;
+    }
+    .registration-container {
+      max-width: 500px;
+      margin: 50px auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .registration-title {
+      text-align: center;
+      margin-bottom: 20px;
+      font-weight: bold;
+      color: #343a40;
+    }
+    .form-control {
+      margin-bottom: 15px;
+    }
+    .register-btn {
+      background-color: #007bff;
+      color: #fff;
+      width: 100%;
+    }
+    .register-btn:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="registration-container">
+    <h2 class="registration-title">Register</h2>
+    <form id="registrationForm">
+      <div class="form-group">
+        <label for="name">Name:</label>
+        <input type="text" class="form-control" id="name" placeholder="Enter your name" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" class="form-control" id="email" placeholder="Enter your email" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password:</label>
+        <input type="password" class="form-control" id="password" placeholder="Enter your password" required>
+      </div>
+      <button type="submit" class="btn register-btn">Register</button>
+    </form>
+  </div>
+</body>
+</html>
